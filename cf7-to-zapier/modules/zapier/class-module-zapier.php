@@ -70,10 +70,39 @@ if ( ! class_exists( 'CFTZ_Module_Zapier' ) ) {
                 return;
             }
 
+            $body = json_encode( $data );
+            $is_json = true;
+
+            if ( ! empty( $properties['custom_body'] ) ) {
+                $body = $properties['custom_body'];
+
+                foreach ( $data as $key => $value ) {
+                    $value = json_encode( $value );
+                    $value = preg_replace('/^"(.*)"$/', '$1', $value);
+
+                    $body = str_replace( '[' . $key . ']', $value, $body );
+                }
+
+                if ( json_decode( $body ) === null ) {
+                    $is_json = false;
+                }
+            }
+
+            // Check is valid GET
+            if ( ! empty( $properties['custom_method'] ) && $properties['custom_method'] === 'GET') {
+                if ( ! $is_json ) {
+                    $error = new WP_Error();
+                    $error->add( '0', __( 'Webhook has method GET but body is not a JSON to be passed as query params.', 'cf7-to-zapier' ), [ 'body' => $body ] );
+                    throw new CFTZ_Exception( $error );
+                }
+
+                $body = json_decode( $body, true );
+            }
+
             $args = array(
-                'method'    => 'POST',
-                'body'      => json_encode( $data ),
-                'headers'   => $this->create_headers($properties['custom_headers'] ?? ''),
+                'method'    => $properties['custom_method'] ?? 'POST',
+                'body'      => $body,
+                'headers'   => $this->create_headers( $properties['custom_headers'] ?? '', $is_json ),
             );
 
             /**
@@ -94,11 +123,19 @@ if ( ! class_exists( 'CFTZ_Module_Zapier' ) ) {
              *
              * @since    1.1.0
              */
-            $result = wp_remote_post( $hook_url, apply_filters( 'ctz_post_request_args', $args, $properties, $contact_form ) );
+            $result = wp_remote_request( $hook_url, apply_filters( 'ctz_post_request_args', $args, $properties, $contact_form ) );
 
-            // If result is a WP Error, throw a Exception woth the message.
+            // If result is a WP Error, throw a Exception with the message.
             if ( is_wp_error( $result ) ) {
-                throw new Exception( $result->get_error_message() );
+                throw new CFTZ_Exception( $result );
+            }
+
+            // Check the accepted code status for webhook
+            $code = wp_remote_retrieve_response_code( $result );
+            if ( ! in_array( $code, $properties['accepted_statuses'] ) ) {
+                $error = new WP_Error();
+                $error->add( $code, __( 'Webhook returned a error code.', 'cf7-to-zapier' ), [ 'result' => $result ] );
+                throw new CFTZ_Exception( $error );
             }
 
             /**
@@ -126,19 +163,20 @@ if ( ! class_exists( 'CFTZ_Module_Zapier' ) ) {
          *
          * @since    2.3.0
          */
-        public function create_headers($custom) {
-            $headers = array( 'Content-Type'  => 'application/json' );
+        public function create_headers( $custom, $is_json = true ) {
+            $headers = [ 'Content-Type'  => $is_json ? 'application/json' : 'text/plain' ];
+
             $blog_charset = get_option( 'blog_charset' );
             if ( ! empty( $blog_charset ) ) {
                 $headers['Content-Type'] .= '; charset=' . get_option( 'blog_charset' );
             }
 
-            $custom = explode("\n", $custom);
-            foreach ($custom as $header) {
-                $header = explode(':', $header, 2);
-                $header = array_map('trim', $header);
+            $custom = explode( "\n", $custom );
+            foreach ( $custom as $header ) {
+                $header = explode( ':', $header, 2 );
+                $header = array_map( 'trim', $header );
 
-                if (count($header) === 2) {
+                if ( count( $header ) === 2 ) {
                     $headers[ $header[0] ] = $header[1];
                 }
             }

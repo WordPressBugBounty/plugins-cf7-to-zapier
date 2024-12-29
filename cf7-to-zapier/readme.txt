@@ -4,8 +4,8 @@ Contributors: mariovalney
 Donate link: https://www.paypal.com/donate?campaign_id=9AA82JCSNWNFS
 Tags: cf7, contact form, zapier, integration, webhook
 Requires at least: 4.7
-Tested up to: 6.6
-Stable tag: 3.0.6
+Tested up to: 6.8
+Stable tag: 4.0.0
 Requires PHP: 7.4
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
@@ -13,6 +13,12 @@ License URI: http://www.gnu.org/licenses/gpl-2.0.html
 Use Contact Form 7 as a trigger to any webhook!
 
 == Description ==
+
+**CF7 to Webhook** is trusted by more than 30.000 WordPress websites and translated in languages!
+
+Thank you!
+
+---
 
 [Contact Form 7 (CF7)](https://wordpress.org/plugins/contact-form-7/ "Install it first, of course") is a awesome plugin used by 1+ million WordPress websites.
 
@@ -55,7 +61,7 @@ We would be grateful for a [review here](https://wordpress.org/support/plugin/cf
 
 = Support =
 
-* Contact Form 7 - 5.9.X
+* Contact Form 7 - 6.0.X
 
 == Installation ==
 
@@ -123,6 +129,12 @@ We will replace the value for last option (which is the free_text input) with th
 
 This way your webhook will receive the free text value and other options if you allow it (like in checkbox).
 
+= I don't see a template for my webhook. =
+
+Templates are created by community so we're constructing this together.
+
+You still are able to add a custom header / body or you can open a ticket and propose a new template.
+
 = Who is the developer? =
 
 [Mário Valney](https://mariovalney.com/me)
@@ -135,12 +147,21 @@ Yes! Visit [GitHub repository](https://github.com/mariovalney/cf7-to-zapier) or 
 
 == Screenshots ==
 
-1. CF7 to Webhook configuration
-2. Zapier Step 1 - Choosing you app trigger
-3. Zapier Step 2 - Choosing Catch Hook option
-4. Zapier Step 3 - Webhook URL (waiting for first data)
+1. Webhook configuration
+2. Using templates
+3. All request methods
 
 == Changelog ==
+
+= 4.0.0 =
+
+* New feature: [TEMPLATES](https://wordpress.org/support/topic/how-templates-works).
+* New feature: advanced custom body.
+* New feature: error notification and status check.
+* New feature: send file content as base64 (props to @ozanerturk).
+* Settings UI renewed.
+
+* New template: Slack Integration.
 
 = 3.0.2 =
 
@@ -269,14 +290,21 @@ Props to @shoreline-chrism
 
 == Upgrade Notice ==
 
-= 3.0.0 =
+= 4.0.0 =
 
-Added support to placeholders in webhook URLs!
-You can check details [in this topic](https://wordpress.org/support/topic/use-webhook-url-placeholders).
+We have a lot of new features and a new UI!
+The most cool new feature is templates! Take a look!
+
+It's not a breaking change version, but we recommend to test your form after update (we have new settings: saving the form maybe help).
+
+New options:
+
+* Templates!
+* Advanced custom body.
+* Error notification and response status check.
+* Send file content as Base64 instead of create a link to download.
 
 More changes:
 
-* Added 'ctz_hook_url_placeholder' filter.
 * Tested against new CF7 and WP versions.
-* A donate link if you feel the need to give back.
 * Some fixes (including translations).
