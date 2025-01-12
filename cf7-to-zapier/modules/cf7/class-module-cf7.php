@@ -365,79 +365,7 @@ if ( ! class_exists( 'CFTZ_Module_CF7' ) ) {
                      */
                     $error_mails =  apply_filters( 'ctz_trigger_webhook_error_mails', $properties['error_mails'], $exception );
 
-                    if ( ! empty( $error_mails ) ) {
-                        $form = sprintf( '#%s - %s', $contact_form->id(), $contact_form->title() );
-
-                        $notification = __( '
-                            Hey! How are you?
-
-                            "CF7 to Webhook" has a built-in feature that detects when a webhook fails and notifies you with this automated email.
-
-                            - Form: [FORM]
-                            - Webhook: [WEBHOOK]
-                            - Error: [EXCEPTION]
-
-                            Request Method:
-                            [REQUEST_METHOD]
-
-                            Request Headers:
-                            [REQUEST_HEADERS]
-
-                            Request Body:
-                            [REQUEST_BODY]
-
-                            Response Code:
-                            [RESPONSE_CODE]
-
-                            Response Message:
-                            [RESPONSE_MESSAGE]
-
-                            Response Headers:
-                            [RESPONSE_HEADERS]
-
-                            Response Body:
-                            [RESPONSE_BODY]
-
-                            --
-
-                            You\'ll receive one notification for each webhook with errors.
-                            Other webhooks maybe were successful.
-                        ', 'cf7-to-zapier' );
-
-                        $notification = str_replace(
-                            array(
-                                '[FORM]',
-                                '[WEBHOOK]',
-                                '[EXCEPTION]',
-                                '[REQUEST_METHOD]',
-                                '[REQUEST_HEADERS]',
-                                '[REQUEST_BODY]',
-                                '[RESPONSE_CODE]',
-                                '[RESPONSE_MESSAGE]',
-                                '[RESPONSE_HEADERS]',
-                                '[RESPONSE_BODY]',
-                            ),
-                            array(
-                                $form,
-                                $hook_url,
-                                ( method_exists( $exception, 'get_error') ) ? json_encode( $exception->get_error() ) : $exception->getMessage(),
-                                ( method_exists( $exception, 'get_request_method') ) ? $exception->get_request_method() : '(MAYBE) POST',
-                                ( method_exists( $exception, 'get_request_headers') ) ? json_encode( $exception->get_request_headers() ) : '',
-                                ( method_exists( $exception, 'get_request_body') ) ? json_encode( $exception->get_request_body() ) : json_encode( $data ),
-                                ( method_exists( $exception, 'get_response_code') ) ? json_encode( $exception->get_response_code() ) : '',
-                                ( method_exists( $exception, 'get_response_message') ) ? json_encode( $exception->get_response_message() ) : '',
-                                ( method_exists( $exception, 'get_response_headers') ) ? json_encode( $exception->get_response_headers() ) : '',
-                                ( method_exists( $exception, 'get_response_body') ) ? json_encode( $exception->get_response_body() ) : '',
-                            ),
-                            $notification
-                        );
-
-                        wp_mail(
-                            $error_mails,
-                            sprintf( __( '[%s] Webhook Error on Form %s', 'cf7-to-zapier' ), wp_specialchars_decode( get_option( 'blogname' ), ENT_QUOTES ), $form ),
-                            $notification,
-                        );
-                    }
+                    $this->trigger_error_notification( $error_mails, $contact_form, $hook_url, $exception );
 
                     /**
                      * Filter: ctz_trigger_webhook_error_message
@@ -475,6 +403,83 @@ if ( ! class_exists( 'CFTZ_Module_CF7' ) ) {
              * @since  2.4.0
              */
             do_action( 'ctz_trigger_webhook_errors', $errors, $contact_form );
+        }
+
+        /**
+         * Send a error notification
+         *
+         * @since    4.0.3
+         * @param    obj                $contact_form   ContactForm Obj
+         */
+        private function trigger_error_notification( $error_mails, $contact_form, $hook_url, $exception ) {
+            if ( empty( $error_mails ) && ! ctz_is_developing() ) {
+                return;
+            }
+
+            $form = sprintf( '#%s - %s', $contact_form->id(), $contact_form->title() );
+
+            $data = array(
+                '[FORM]'                => $form,
+                '[WEBHOOK]'             => $hook_url,
+                '[EXCEPTION]'           => ( method_exists( $exception, 'get_error') ) ? json_encode( $exception->get_error() ) : $exception->getMessage(),
+                '[REQUEST_METHOD]'      => ( method_exists( $exception, 'get_request_method') ) ? $exception->get_request_method() : '(MAYBE) POST',
+                '[REQUEST_HEADERS]'     => ( method_exists( $exception, 'get_request_headers') ) ? json_encode( $exception->get_request_headers() ) : '',
+                '[REQUEST_BODY]'        => ( method_exists( $exception, 'get_request_body') ) ? json_encode( $exception->get_request_body() ) : json_encode( $data ),
+                '[RESPONSE_CODE]'       => ( method_exists( $exception, 'get_response_code') ) ? json_encode( $exception->get_response_code() ) : '',
+                '[RESPONSE_MESSAGE]'    => ( method_exists( $exception, 'get_response_message') ) ? json_encode( $exception->get_response_message() ) : '',
+                '[RESPONSE_HEADERS]'    => ( method_exists( $exception, 'get_response_headers') ) ? json_encode( $exception->get_response_headers() ) : '',
+                '[RESPONSE_BODY]'       => ( method_exists( $exception, 'get_response_body') ) ? json_encode( $exception->get_response_body() ) : '',
+            );
+
+            // Log in development
+            if ( ctz_is_developing() && function_exists( 'dump_table' ) ) {
+                dump_table( $data );
+                return;
+            }
+
+            $notification = __( '
+Hey! How are you?
+
+"CF7 to Webhook" has a built-in feature that detects when a webhook fails and notifies you with this automated email.
+
+- Form: [FORM]
+- Webhook: [WEBHOOK]
+- Error: [EXCEPTION]
+
+Request Method:
+[REQUEST_METHOD]
+
+Request Headers:
+[REQUEST_HEADERS]
+
+Request Body:
+[REQUEST_BODY]
+
+Response Code:
+[RESPONSE_CODE]
+
+Response Message:
+[RESPONSE_MESSAGE]
+
+Response Headers:
+[RESPONSE_HEADERS]
+
+Response Body:
+[RESPONSE_BODY]
+
+--
+
+You\'ll receive one notification for each webhook with errors.
+Other webhooks maybe were successful.
+
+Please, be careful sharing this data (even in WordPress official support forum).
+It may contain sensitive data.
+            ', 'cf7-to-zapier' );
+
+            $notification = str_replace( array_keys( $data ), array_values( $data ), $notification );
+            $subject = sprintf( __( '[%s] Webhook Error on Form %s', 'cf7-to-zapier' ), wp_specialchars_decode( get_option( 'blogname' ), ENT_QUOTES ), $form );
+
+            wp_mail( $error_mails, $subject, $notification );
         }
 
         /**
@@ -518,7 +523,7 @@ if ( ! class_exists( 'CFTZ_Module_CF7' ) ) {
                 }
 
                 // Files
-                if ( $tag->basetype === 'file' && ! empty( $uploaded_files[ $tag->name ] ) ) {
+                if ( in_array( $tag->basetype, [ 'file', 'multilinefile' ] ) && ! empty( $uploaded_files[ $tag->name ] ) ) {
                     $files = $uploaded_files[ $tag->name ];
 
                     $copied_files = [];
@@ -560,20 +565,7 @@ if ( ! class_exists( 'CFTZ_Module_CF7' ) ) {
                 }
 
                 // Support to Pipes
-                $pipes = $tag->pipes;
-                if ( WPCF7_USE_PIPE && $pipes instanceof WPCF7_Pipes && ! $pipes->zero() ) {
-                    if ( is_array( $value) ) {
-                        $new_value = [];
-
-                        foreach ( $value as $v ) {
-                            $new_value[] = $pipes->do_pipe( wp_unslash( $v ) );
-                        }
-
-                        $value = $new_value;
-                    } else {
-                        $value = $pipes->do_pipe( wp_unslash( $value ) );
-                    }
-                }
+                $value = $this->get_value_from_pipes( $value, $tag );
 
                 // Support to Free Text on checkbox and radio
                 if ( $tag->has_option( 'free_text' ) && in_array( $tag->basetype, [ 'checkbox', 'radio' ] ) ) {
@@ -670,6 +662,45 @@ if ( ! class_exists( 'CFTZ_Module_CF7' ) ) {
             }
 
             return true;
+        }
+
+        /**
+         * Retrieve a array with data from Special Mail Tags
+         *
+         * @link https://contactform7.com/special-mail-tags
+         *
+         * @since    4.0.3
+         *
+         * @param    mixed              $value
+         * @param    obj                $atag   WPCF7_FormTag
+         * @return   mixed              $value
+         */
+        private function get_value_from_pipes( $value, $tag ) {
+            if ( ! WPCF7_USE_PIPE || ! $tag->pipes instanceof WPCF7_Pipes ) {
+                return $value;
+            }
+
+            /**
+             * Check for pipe support
+             * @see WPCF7_Submission::setup_posted_data()
+             */
+            if ( ! wpcf7_form_tag_supports( $tag->type, 'selectable-values' ) || $tag->pipes->zero() ) {
+                return $value;
+            }
+
+            // if ( wpcf7_form_tag_supports( $tag->type, 'selectable-values' ) ) {
+
+            if ( is_array( $value ) ) {
+                $new_value = [];
+
+                foreach ( $value as $v ) {
+                    $new_value[] = $tag->pipes->do_pipe( wp_unslash( $v ) );
+                }
+
+                return $new_value;
+            }
+
+            return $tag->pipes->do_pipe( wp_unslash( $value ) );
         }
 
         /**
