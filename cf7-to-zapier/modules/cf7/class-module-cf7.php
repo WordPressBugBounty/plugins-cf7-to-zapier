@@ -64,6 +64,7 @@ if ( ! class_exists( 'CFTZ_Module_CF7' ) ) {
             // Admin Hooks
             $this->core->add_action( 'admin_notices', [ $this, 'check_cf7_plugin' ] );
             $this->core->add_action( 'admin_enqueue_scripts', [ $this, 'admin_enqueue_scripts' ] );
+            $this->core->add_action( 'admin_print_footer_scripts', [ $this, 'admin_print_footer_scripts' ] );
         }
 
         /**
@@ -144,6 +145,16 @@ if ( ! class_exists( 'CFTZ_Module_CF7' ) ) {
         }
 
         /**
+         * Action: 'admin_print_footer_scripts'
+         *
+         * @return void
+         */
+        public function admin_print_footer_scripts() {
+            global $ctz_admin_tags_script;
+            echo $ctz_admin_tags_script;
+        }
+
+        /**
          * Filter the 'wpcf7_editor_panels' to add necessary tabs
          *
          * @since    1.0.0
@@ -205,7 +216,7 @@ if ( ! class_exists( 'CFTZ_Module_CF7' ) ) {
                 // Hook Urls
                 if ( $prop['type'] === 'hookurl' ) {
                     $properties[ $key ] = array_filter( array_map( function( $hook_url ) {
-                        $placeholders = self::get_hook_url_placeholders( $hook_url );
+                        $placeholders = ctz_get_string_placeholders( $hook_url );
 
                         foreach ( $placeholders as $key => $placeholder ) {
                             $hook_url = str_replace( $placeholder, '_____' . $key . '_____', $hook_url );
@@ -316,7 +327,7 @@ if ( ! class_exists( 'CFTZ_Module_CF7' ) ) {
 
                 // Try/Catch to support exception on request
                 try {
-                    $placeholders = CFTZ_Module_CF7::get_hook_url_placeholders( $hook_url );
+                    $placeholders = ctz_get_string_placeholders( $hook_url );
                     foreach ( $placeholders as $key => $placeholder ) {
                         $value = ( $data[ $key ] ?? '' );
                         if ( ! is_scalar( $value ) ) {
@@ -571,6 +582,12 @@ It may contain sensitive data.
                 if ( $tag->has_option( 'free_text' ) && in_array( $tag->basetype, [ 'checkbox', 'radio' ] ) ) {
                     $free_text_label = end( $tag->values );
                     $free_text_name  = $tag->name . '_free_text';
+
+                    // After 5.8.6
+                    if ( ! isset( $_POST[ $free_text_name ] ) ) {
+                        $free_text_name = '_wpcf7_free_text_' . $tag->name;
+                    }
+
                     $free_text_value = ( isset( $_POST[ $free_text_name ] ) ) ? $_POST[ $free_text_name ] : '';
 
                     if ( is_array( $value ) ) {
@@ -597,6 +614,28 @@ It may contain sensitive data.
                 }
 
                 $data[ $key ] = $value;
+            }
+
+            /**
+             * You can return false to avoid merge data with 'cf7msm_posted_data' (previous step)
+             *
+             * @param $should_support   True
+             * @param $contact_form     ContactForm obj from 'wpcf7_mail_sent' action
+             */
+            $should_support_cf7msm = apply_filters( 'ctz_get_data_from_cf7msm_posted_data', true, $contact_form );
+            if ( $should_support_cf7msm && function_exists( 'cf7msm_get' ) ) {
+                $prev_data = cf7msm_get( 'cf7msm_posted_data', '' );
+                if ( ! empty( $prev_data ) && is_array( $prev_data ) ) {
+                    $cf7msm_pipe_flow_id = ( function_exists( 'cf7msm_pipe_flow_field_name' ) ) ? cf7msm_pipe_flow_field_name() : 'wpcf7msm_pipe_flow_id';
+                    $cf7msm_internal_keys = array(
+                        'cf7msm-no-ss',
+                        'cf7msm_options',
+                        $cf7msm_pipe_flow_id
+                    );
+
+                    $prev_data = array_diff_key( $prev_data, array_fill_keys( $cf7msm_internal_keys, 'any' ) );
+                    $data = array_merge( $prev_data, $data );
+                }
             }
 
             /**
@@ -734,26 +773,6 @@ It may contain sensitive data.
             }
 
             return $data;
-        }
-
-        /**
-         * List placeholders from hook_url
-         *
-         * @since    3.0.0
-         * @param    string     $hook_url
-         * @return   array      $placeholders
-         */
-        public static function get_hook_url_placeholders( $hook_url ) {
-            $placeholders = [];
-
-            preg_match_all( '/\[{1}[^\[\]]+\]{1}/', $hook_url, $matches );
-
-            foreach ( $matches[0] as $placeholder ) {
-                $placeholder = substr( $placeholder, 1, -1 );
-                $placeholders[ $placeholder ] = '[' . $placeholder . ']';
-            }
-
-            return $placeholders;
         }
 
         /**

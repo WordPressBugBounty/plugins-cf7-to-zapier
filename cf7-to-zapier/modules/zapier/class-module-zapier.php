@@ -76,10 +76,29 @@ if ( ! class_exists( 'CFTZ_Module_Zapier' ) ) {
             if ( ! empty( $properties['custom_body'] ) ) {
                 $body = $properties['custom_body'];
 
-                foreach ( $data as $key => $value ) {
-                    $value = json_encode( $value );
-                    $value = preg_replace('/^"(.*)"$/', '$1', $value);
+                $tags = [];
+                $scanned = $contact_form->scan_form_tags();
+                foreach ( $scanned as $tag ) {
+                    if ( empty( $tag->name ) ) continue;
 
+                    $tags[ $tag->name ] = $tag;
+                }
+
+                foreach ( $data as $key => $value ) {
+                    // Some tags should be replaced when empty values are sent
+                    if ( ! empty( $tags[$key] ) && empty( $value ) ) {
+                        if ( $tags[$key]->basetype === 'acceptance' ) {
+                            $value = 0;
+                        }
+
+                        if ( $tags[$key]->basetype === 'checkbox' ) {
+                            $value = [];
+                        }
+                    }
+
+                    // We should make sure the value is JSON compatible to replace it.
+                    $value = json_encode( $value );
+                    $value = preg_replace( '/^"(.*)"$/', '$1', $value );
                     $body = str_replace( '[' . $key . ']', $value, $body );
                 }
 
@@ -94,7 +113,7 @@ if ( ! class_exists( 'CFTZ_Module_Zapier' ) ) {
                 'timeout'     => 30,
                 'method'      => $properties['custom_method'] ?? 'POST',
                 'body'        => $body,
-                'headers'     => $this->create_headers( $properties['custom_headers'] ?? '', $is_json ),
+                'headers'     => $this->create_headers( $properties['custom_headers'] ?? '', $is_json, $data ),
             );
 
             // Check is valid GET
@@ -181,8 +200,12 @@ if ( ! class_exists( 'CFTZ_Module_Zapier' ) ) {
          * Get headers to request.
          *
          * @since    2.3.0
+         * @param    string     $custom    Custom headers string
+         * @param    bool       $is_json   Whether the request is JSON
+         * @param    array      $data      Form data for mail tag replacement
+         * @return   array      $headers   Headers array
          */
-        public function create_headers( $custom, $is_json = true ) {
+        public function create_headers( $custom, $is_json = true, $data = [] ) {
             $headers = [ 'Content-Type'  => $is_json ? 'application/json' : 'text/plain' ];
 
             $blog_charset = get_option( 'blog_charset' );
@@ -196,7 +219,23 @@ if ( ! class_exists( 'CFTZ_Module_Zapier' ) ) {
                 $header = array_map( 'trim', $header );
 
                 if ( count( $header ) === 2 ) {
-                    $headers[ $header[0] ] = $header[1];
+                    $header_name = $header[0];
+                    $header_value = $header[1];
+
+                    $placeholders = ctz_get_string_placeholders( $header_value );
+                    foreach ( $placeholders as $tag => $placeholder ) {
+                        $value = $data[ $tag ] ?? '';
+                        if ( is_array( $value ) ) {
+                            $value = implode( ', ', $value );
+                        }
+
+                        $mail_tag = new WPCF7_MailTag( $placeholder, $tag, '' );
+                        $value = apply_filters( 'wpcf7_special_mail_tags', $value, $tag, false, $mail_tag );
+
+                        $header_value = str_replace( $placeholder, $value, $header_value );
+                    }
+
+                    $headers[ $header_name ] = $header_value;
                 }
             }
 
