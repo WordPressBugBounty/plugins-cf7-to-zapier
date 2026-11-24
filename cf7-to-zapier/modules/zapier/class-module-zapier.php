@@ -70,7 +70,7 @@ if ( ! class_exists( 'CFTZ_Module_Zapier' ) ) {
                 return;
             }
 
-            $body = json_encode( $data );
+            $body = $this->encode_json( $data );
             $is_json = true;
 
             if ( ! empty( $properties['custom_body'] ) ) {
@@ -97,7 +97,7 @@ if ( ! class_exists( 'CFTZ_Module_Zapier' ) ) {
                     }
 
                     // We should make sure the value is JSON compatible to replace it.
-                    $value = json_encode( $value );
+                    $value = $this->encode_json( $value );
                     $value = preg_replace( '/^"(.*)"$/', '$1', $value );
                     $body = str_replace( '[' . $key . ']', $value, $body );
                 }
@@ -204,6 +204,30 @@ if ( ! class_exists( 'CFTZ_Module_Zapier' ) ) {
         }
 
         /**
+         * Encode a value to JSON or throw a CFTZ_Exception.
+         *
+         * Sending false as the body (a json_encode() failure) makes the HTTP
+         * transport fail with an error that hides the real problem. See issue #23.
+         *
+         * @since    5.1.1
+         * @param    mixed      $value
+         * @return   string     $json
+         *
+         * @throws   CFTZ_Exception
+         */
+        private function encode_json( $value ) {
+            $json = wp_json_encode( $value );
+
+            if ( false === $json ) {
+                $error = new WP_Error();
+                $error->add( '0', sprintf( __( 'Form data could not be encoded as JSON: %s', 'cf7-to-zapier' ), json_last_error_msg() ) );
+                throw new CFTZ_Exception( $error );
+            }
+
+            return $json;
+        }
+
+        /**
          * Get headers to request.
          *
          * @since    2.3.0
@@ -238,6 +262,9 @@ if ( ! class_exists( 'CFTZ_Module_Zapier' ) ) {
 
                         $mail_tag = new WPCF7_MailTag( $placeholder, $tag, '' );
                         $value = apply_filters( 'wpcf7_special_mail_tags', $value, $tag, false, $mail_tag );
+
+                        // Form data must not add lines to the request: a line break would start a new header.
+                        $value = preg_replace( '/[\x00-\x1F\x7F]+/', ' ', (string) $value );
 
                         $header_value = str_replace( $placeholder, $value, $header_value );
                     }

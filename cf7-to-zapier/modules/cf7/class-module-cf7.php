@@ -37,6 +37,13 @@ if ( ! class_exists( 'CFTZ_Module_CF7' ) ) {
         const METADATA = 'ctz_zapier';
 
         /**
+         * Daily event that deletes the uploads older than the "Delete after" option of each form
+         *
+         * @since    5.3.0
+         */
+        const CRON_DELETE_UPLOADS = 'ctz_delete_expired_uploads';
+
+        /**
          * Define the core functionalities into plugin.
          *
          * @since    1.0.0
@@ -64,7 +71,11 @@ if ( ! class_exists( 'CFTZ_Module_CF7' ) ) {
             // Admin Hooks
             $this->core->add_action( 'admin_notices', [ $this, 'check_cf7_plugin' ] );
             $this->core->add_action( 'admin_enqueue_scripts', [ $this, 'admin_enqueue_scripts' ] );
-            $this->core->add_action( 'admin_print_footer_scripts', [ $this, 'admin_print_footer_scripts' ] );
+            $this->core->add_action( 'wp_ajax_ctz_delete_uploads', [ $this, 'wp_ajax_ctz_delete_uploads' ] );
+
+            // Cron
+            $this->core->add_action( 'admin_init', [ $this, 'schedule_delete_expired_uploads' ] );
+            $this->core->add_action( self::CRON_DELETE_UPLOADS, [ $this, 'delete_expired_uploads' ] );
         }
 
         /**
@@ -92,13 +103,13 @@ if ( ! class_exists( 'CFTZ_Module_CF7' ) ) {
                 return;
             }
 
-            if ( file_exists( ABSPATH . PLUGINDIR . '/contact-form-7/wp-contact-form-7.php' ) ) {
+            if ( file_exists( WP_PLUGIN_DIR . '/contact-form-7/wp-contact-form-7.php' ) ) {
                 $url = 'plugins.php';
             } else {
                 $url = 'plugin-install.php?tab=search&s=Contact+form+7';
             }
 
-            echo '. <a href="' . admin_url( $url ) . '">' . __( "Do it now?", "cf7-to-zapier" ) . '</a></p>';
+            echo '. <a href="' . esc_url( admin_url( $url ) ) . '">' . esc_html__( 'Do it now?', 'cf7-to-zapier' ) . '</a></p>';
             echo '</div>';
         }
 
@@ -121,37 +132,112 @@ if ( ! class_exists( 'CFTZ_Module_CF7' ) ) {
             wp_enqueue_style( 'ctz-admin-style', CFTZ_PLUGIN_URL . '/modules/cf7/admin/assets/admin.css', [ 'ctz-select2-style' ], $version );
 
             wp_enqueue_script( 'ctz-select2-script', 'https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.9/js/select2.min.js', [ 'jquery' ], $version );
-            wp_enqueue_script( 'ctz-admin-script', CFTZ_PLUGIN_URL . '/modules/cf7/admin/assets/admin.js', [ 'ctz-select2-script' ], $version );
+            // In the footer: the webhook panel adds CTZ_ADMIN_TAGS to it with wp_add_inline_script()
+            // while rendering, and a script printed in the header would have gone out without it.
+            wp_enqueue_script( 'ctz-admin-script', CFTZ_PLUGIN_URL . '/modules/cf7/admin/assets/admin.js', [ 'ctz-select2-script' ], $version, true );
 
-            // For developers: in your enviroment make "/docs" point to "/cf7-to-webhook-valney-dev"
-            $templates_url = ctz_is_developing() ? home_url( '/cf7-to-webhook-valney-dev/templates.json' ) : 'https://cf7-to-webhook.valney.dev/templates.json';
+            // A repository checkout loads the templates from the website files, so changes show up before deploy.
+            // Released copies do not ship ci/ and always load the published file, even with WP_DEBUG on.
+            $templates_url = 'https://cf7-to-webhook.valney.dev/templates.json';
+            if ( ctz_is_developing() && file_exists( CFTZ_PLUGIN_PATH . '/ci/website/public/templates.json' ) ) {
+                $templates_url = CFTZ_PLUGIN_URL . '/ci/website/public/templates.json';
+            }
+
             wp_localize_script( 'ctz-admin-script', 'CTZ_ADMIN', array(
                 'templates_url' => $templates_url,
                 'groups'        => array(
                     'default' => __( 'Default', 'cf7-to-zapier' )
                 ),
                 'messages'      => array(
-                    'open_docs'         => __( 'This template has documentation. Want to open (another tab)?', 'cf7-to-zapier' ),
-                    'confirm_all'       => __( 'This action will replace "Headers" and "Body" and remove "Special Mail Tags".', 'cf7-to-zapier' ),
-                    'confirm_body'      => __( 'This action will replace "Body" and remove "Special Mail Tags" and "Headers".', 'cf7-to-zapier' ),
-                    'save_to_preview'   => __( 'Save to load preview.', 'cf7-to-zapier' ),
-                    'btn_no'            => __( 'No', 'cf7-to-zapier' ),
-                    'btn_yes'           => __( 'Yes', 'cf7-to-zapier' ),
-                    'btn_cancel'        => __( 'Cancel', 'cf7-to-zapier' ),
-                    'btn_continue'      => __( 'Continue', 'cf7-to-zapier' ),
-                    'choose_template'   => __( 'Choose a template', 'cf7-to-zapier' ),
+                    'open_docs'              => __( 'This template has documentation.', 'cf7-to-zapier' ) . '<br>' . __( 'Open in another tab?', 'cf7-to-zapier' ),
+                    'confirm_all'            => __( 'This action will replace "Headers" and "Body" and remove "Special Mail Tags".', 'cf7-to-zapier' ),
+                    'confirm_body'           => __( 'This action will replace "Body" and remove "Special Mail Tags" and "Headers".', 'cf7-to-zapier' ),
+                    'save_to_preview'        => __( 'Save to load preview.', 'cf7-to-zapier' ),
+                    'btn_no'                 => __( 'No', 'cf7-to-zapier' ),
+                    'btn_yes'                => __( 'Yes', 'cf7-to-zapier' ),
+                    'btn_cancel'             => __( 'Cancel', 'cf7-to-zapier' ),
+                    'btn_continue'           => __( 'Continue', 'cf7-to-zapier' ),
+                    'choose_template'        => __( 'Choose a template', 'cf7-to-zapier' ),
+                    'confirm_delete_uploads' => __( 'This action will delete all files uploaded with this form since always.', 'cf7-to-zapier' ) . '<br>' . __( 'Links sent to webhook will stop working.', 'cf7-to-zapier' ),
+                    'delete_uploads_error'   => __( 'The files could not be deleted. Reload the page and try again.', 'cf7-to-zapier' ),
                 ),
             ) );
         }
 
         /**
-         * Action: 'admin_print_footer_scripts'
+         * Action: 'wp_ajax_ctz_delete_uploads'
+         *
+         * Delete every file uploaded with a form: its media library attachments and its
+         * folder in the uploads, with everything inside.
+         *
+         * @since    5.2.0
          *
          * @return void
          */
-        public function admin_print_footer_scripts() {
-            global $ctz_admin_tags_script;
-            echo $ctz_admin_tags_script;
+        public function wp_ajax_ctz_delete_uploads() {
+            $form_id = absint( $_POST['form_id'] ?? 0 );
+
+            // Only administrators: it deletes files that other users and webhooks may still need.
+            if ( ! check_ajax_referer( 'ctz_delete_uploads_' . $form_id, 'nonce', false ) || ! current_user_can( 'manage_options' ) ) {
+                wp_send_json_error( null, 403 );
+            }
+
+            if ( empty( $form_id ) || ! wpcf7_contact_form( $form_id ) ) {
+                wp_send_json_error( null, 404 );
+            }
+
+            self::delete_uploads( $form_id );
+
+            wp_send_json_success( array(
+                'summary' => self::get_uploads_summary_text( $form_id ),
+            ) );
+        }
+
+        /**
+         * Action: 'admin_init'
+         *
+         * Schedule the daily event that deletes old uploads. It runs even when no form
+         * uses "Delete after", and then does nothing.
+         *
+         * @since    5.3.0
+         *
+         * @return void
+         */
+        public function schedule_delete_expired_uploads() {
+            if ( ! wp_next_scheduled( self::CRON_DELETE_UPLOADS ) ) {
+                wp_schedule_event( time(), 'daily', self::CRON_DELETE_UPLOADS );
+            }
+        }
+
+        /**
+         * Action: 'ctz_delete_expired_uploads'
+         *
+         * Delete the uploads of each form older than its "Delete after" days.
+         * Days are counted from midnight UTC, like the date in the submission folder name,
+         * so files are kept for at least that many days.
+         *
+         * @since    5.3.0
+         *
+         * @return void
+         */
+        public function delete_expired_uploads() {
+            if ( ! class_exists( 'WPCF7_ContactForm' ) ) {
+                return;
+            }
+
+            $now   = time();
+            $today = $now - ( $now % DAY_IN_SECONDS );
+
+            foreach ( WPCF7_ContactForm::find() as $contact_form ) {
+                $properties = self::get_form_properties( $contact_form );
+                $days       = absint( $properties['delete_files_after'] );
+
+                if ( $days < 1 ) {
+                    continue;
+                }
+
+                self::delete_uploads( $contact_form->id(), $today - $days * DAY_IN_SECONDS );
+            }
         }
 
         /**
@@ -198,6 +284,17 @@ if ( ! class_exists( 'CFTZ_Module_CF7' ) ) {
                 $name = 'ctz-webhook-' . $key;
 
                 $value = ( isset( $_POST[ $name ] ) ) ? $_POST[ $name ] : null;
+
+                // Only administrators, like "Delete all files": the field is disabled for other users, so it is not sent.
+                if ( $key === 'delete_files_after' && ! current_user_can( 'manage_options' ) ) {
+                    continue;
+                }
+
+                // Number
+                if ( $prop['type'] === 'number' ) {
+                    $properties[ $key ] = (string) max( 0, intval( $value ) );
+                    continue;
+                }
 
                 // Checkbox
                 if ( $prop['type'] === 'checkbox' ) {
@@ -321,7 +418,8 @@ if ( ! class_exists( 'CFTZ_Module_CF7' ) ) {
             $smt_data = $this->get_data_from_special_mail_tags( $contact_form );
             $cf_data = $this->get_data_from_contact_form( $contact_form );
 
-            $data = array_merge( $smt_data, $cf_data );
+            // We read $_POST directly, so invalid UTF-8 is still here and would break the JSON body.
+            $data = $this->scrub_utf8( array_merge( $smt_data, $cf_data ) );
             $errors = [];
 
             foreach ( (array) $properties['hook_url'] as $hook_url ) {
@@ -380,7 +478,7 @@ if ( ! class_exists( 'CFTZ_Module_CF7' ) ) {
                      */
                     $error_mails =  apply_filters( 'ctz_trigger_webhook_error_mails', $properties['error_mails'], $exception );
 
-                    $this->trigger_error_notification( $error_mails, $contact_form, $hook_url, $exception );
+                    $this->trigger_error_notification( $error_mails, $contact_form, $hook_url, $exception, $data );
 
                     /**
                      * Filter: ctz_trigger_webhook_error_message
@@ -425,9 +523,10 @@ if ( ! class_exists( 'CFTZ_Module_CF7' ) ) {
          *
          * @since    4.0.3
          * @param    obj                $contact_form   ContactForm Obj
+         * @param    array              $data           Data sent to the webhook, used when the exception has no request body.
          */
-        private function trigger_error_notification( $error_mails, $contact_form, $hook_url, $exception ) {
-            if ( empty( $error_mails ) && ! ctz_is_developing() ) {
+        private function trigger_error_notification( $error_mails, $contact_form, $hook_url, $exception, $data = [] ) {
+            if ( empty( $error_mails ) && ! cftz_activated_debug_functions() ) {
                 return;
             }
 
@@ -443,25 +542,25 @@ if ( ! class_exists( 'CFTZ_Module_CF7' ) ) {
                         $headers[ $name ] = '***REDACTED***';
                     }
                 }
-                $request_headers = json_encode( $headers );
+                $request_headers = wp_json_encode( $headers );
             }
 
-            $data = array(
+            $replacements = array(
                 '[FORM]'                => $form,
                 '[WEBHOOK]'             => $hook_url,
-                '[EXCEPTION]'           => ( method_exists( $exception, 'get_error') ) ? json_encode( $exception->get_error() ) : $exception->getMessage(),
+                '[EXCEPTION]'           => ( method_exists( $exception, 'get_error') ) ? wp_json_encode( $exception->get_error() ) : $exception->getMessage(),
                 '[REQUEST_METHOD]'      => ( method_exists( $exception, 'get_request_method') ) ? $exception->get_request_method() : '(MAYBE) POST',
                 '[REQUEST_HEADERS]'     => $request_headers,
-                '[REQUEST_BODY]'        => ( method_exists( $exception, 'get_request_body') ) ? json_encode( $exception->get_request_body() ) : json_encode( $data ),
-                '[RESPONSE_CODE]'       => ( method_exists( $exception, 'get_response_code') ) ? json_encode( $exception->get_response_code() ) : '',
-                '[RESPONSE_MESSAGE]'    => ( method_exists( $exception, 'get_response_message') ) ? json_encode( $exception->get_response_message() ) : '',
-                '[RESPONSE_HEADERS]'    => ( method_exists( $exception, 'get_response_headers') ) ? json_encode( $exception->get_response_headers() ) : '',
-                '[RESPONSE_BODY]'       => ( method_exists( $exception, 'get_response_body') ) ? json_encode( $exception->get_response_body() ) : '',
+                '[REQUEST_BODY]'        => ( method_exists( $exception, 'get_request_body') ) ? wp_json_encode( $exception->get_request_body() ) : wp_json_encode( $data ),
+                '[RESPONSE_CODE]'       => ( method_exists( $exception, 'get_response_code') ) ? wp_json_encode( $exception->get_response_code() ) : '',
+                '[RESPONSE_MESSAGE]'    => ( method_exists( $exception, 'get_response_message') ) ? wp_json_encode( $exception->get_response_message() ) : '',
+                '[RESPONSE_HEADERS]'    => ( method_exists( $exception, 'get_response_headers') ) ? wp_json_encode( $exception->get_response_headers() ) : '',
+                '[RESPONSE_BODY]'       => ( method_exists( $exception, 'get_response_body') ) ? wp_json_encode( $exception->get_response_body() ) : '',
             );
 
-            // Log in development
-            if ( ctz_is_developing() && function_exists( 'dump_table' ) ) {
-                dump_table( $data );
+            // Log in development, only when the debug helpers were asked for (CFTZ_ADD_DEBUG_FUNCTIONS)
+            if ( cftz_activated_debug_functions() && function_exists( 'dump_table' ) ) {
+                dump_table( $replacements );
                 return;
             }
 
@@ -504,7 +603,7 @@ Please, be careful sharing this data (even in WordPress official support forum).
 It may contain sensitive data.
             ', 'cf7-to-zapier' );
 
-            $notification = str_replace( array_keys( $data ), array_values( $data ), $notification );
+            $notification = str_replace( array_keys( $replacements ), array_values( $replacements ), $notification );
             $subject = sprintf( __( '[%s] Webhook Error on Form %s', 'cf7-to-zapier' ), wp_specialchars_decode( get_option( 'blogname' ), ENT_QUOTES ), $form );
 
             wp_mail( $error_mails, $subject, $notification );
@@ -526,9 +625,10 @@ It may contain sensitive data.
             $submission = WPCF7_Submission::get_instance();
             $uploaded_files = ( ! empty( $submission ) ) ? $submission->uploaded_files() : [];
 
-            // Upload Info
+            // Upload Info: the folder name starts with the date (UTC), used by "Delete after".
             $wp_upload_dir = wp_get_upload_dir();
-            $upload_path = CFTZ_UPLOAD_DIR . '/' . $contact_form->id() . '/' . bin2hex( random_bytes( 16 ) );
+            $upload_time = time();
+            $upload_path = CFTZ_UPLOAD_DIR . '/' . $contact_form->id() . '/' . gmdate( 'Ymd', $upload_time ) . '_' . bin2hex( random_bytes( 16 ) );
 
             $upload_url = $wp_upload_dir['baseurl'] . '/' . $upload_path;
             $upload_dir = $wp_upload_dir['basedir'] . '/' . $upload_path;
@@ -554,10 +654,34 @@ It may contain sensitive data.
                 if ( in_array( $tag->basetype, [ 'file', 'multilinefile' ] ) && ! empty( $uploaded_files[ $tag->name ] ) ) {
                     $files = $uploaded_files[ $tag->name ];
 
+                    $send_content   = ! empty( $properties['files_send_content'] );
+                    $add_to_library = ! empty( $properties['add_to_library'] );
+
                     $copied_files = [];
                     foreach ( (array) $files as $file ) {
+                        // CF7 deletes its upload at the end of the request, so links and the media library need a copy.
+                        $copy = '';
+                        if ( ! $send_content || $add_to_library ) {
+                            wp_mkdir_p( $upload_dir );
+                            $this->protect_upload_dirs( array(
+                                $wp_upload_dir['basedir'] . '/' . CFTZ_UPLOAD_DIR,
+                                $wp_upload_dir['basedir'] . '/' . CFTZ_UPLOAD_DIR . '/' . $contact_form->id(),
+                                $upload_dir,
+                            ) );
+
+                            $filename = wp_unique_filename( $upload_dir, $tag->name . '-' . basename( $file ) );
+
+                            if ( copy( $file, $upload_dir . '/' . $filename ) ) {
+                                $copy = $upload_dir . '/' . $filename;
+                            }
+                        }
+
+                        if ( $copy && $add_to_library ) {
+                            $this->add_file_to_library( $copy, $contact_form, $tag->name, $upload_time );
+                        }
+
                         // Send file content
-                        if ( ! empty( $properties['files_send_content'] ) ) {
+                        if ( $send_content ) {
                             $file_content = file_get_contents( $file );
                             $file_content = base64_encode( $file_content );
 
@@ -570,11 +694,7 @@ It may contain sensitive data.
                         }
 
                         // Send file link
-                        wp_mkdir_p( $upload_dir );
-
-                        $filename = wp_unique_filename( $upload_dir, $tag->name . '-' . basename( $file ) );
-
-                        if ( ! copy( $file, $upload_dir . '/' . $filename ) ) {
+                        if ( ! $copy ) {
                             $submission = WPCF7_Submission::get_instance();
                             $submission->set_status( 'mail_failed' );
                             $submission->set_response( $contact_form->message( 'upload_failed' ) );
@@ -760,6 +880,330 @@ It may contain sensitive data.
         }
 
         /**
+         * Add a copied upload to the media library as a private attachment.
+         *
+         * WordPress would create resized copies and a "-scaled" or "-rotated" version next to
+         * the file, and point the attachment to them. The filters turn that off, so the
+         * attachment keeps the same file and URL sent to the webhook.
+         *
+         * @since    5.2.0
+         *
+         * @param    string             $path           Absolute path of the copied file
+         * @param    WPCF7_ContactForm  $contact_form   ContactForm Obj
+         * @param    string             $field          Name of the file field
+         * @param    int                $time           Submission time, the same as the folder date
+         * @return   int                $attachment_id  Attachment ID or 0 if it was not added
+         */
+        private function add_file_to_library( $path, $contact_form, $field, $time ) {
+            // Every file type goes in: the file is already public in the uploads folder. CF7 has
+            // renamed risky extensions (svg, html, js, php...) to ".txt". The content check gives
+            // the real type, and a file whose content does not match its extension, or that
+            // WordPress does not know, is stored as a generic binary file.
+            $filetype  = wp_check_filetype_and_ext( $path, basename( $path ), wp_get_mime_types() );
+            $mime_type = ! empty( $filetype['type'] ) ? $filetype['type'] : 'application/octet-stream';
+
+            // The date comes from the folder, so "Delete after" removes the attachment and its folder on the same day.
+            $date_gmt = gmdate( 'Y-m-d H:i:s', $time );
+
+            $attachment_id = wp_insert_attachment( array(
+                'post_title'     => sanitize_text_field( pathinfo( $path, PATHINFO_FILENAME ) ),
+                'post_mime_type' => $mime_type,
+                'post_status'    => 'private',
+                'post_date'      => get_date_from_gmt( $date_gmt ),
+                'post_date_gmt'  => $date_gmt,
+            ), $path, 0, true );
+
+            if ( is_wp_error( $attachment_id ) ) {
+                return 0;
+            }
+
+            update_post_meta( $attachment_id, '_ctz_contact_form_id', $contact_form->id() );
+            update_post_meta( $attachment_id, '_ctz_field', $field );
+
+            require_once ABSPATH . 'wp-admin/includes/image.php';
+            require_once ABSPATH . 'wp-admin/includes/media.php';
+
+            add_filter( 'intermediate_image_sizes_advanced', '__return_empty_array', 999 );
+            add_filter( 'fallback_intermediate_image_sizes', '__return_empty_array', 999 );
+            add_filter( 'big_image_size_threshold', '__return_false', 999 );
+            add_filter( 'wp_image_maybe_exif_rotate', '__return_false', 999 );
+
+            wp_update_attachment_metadata( $attachment_id, wp_generate_attachment_metadata( $attachment_id, $path ) );
+
+            remove_filter( 'intermediate_image_sizes_advanced', '__return_empty_array', 999 );
+            remove_filter( 'fallback_intermediate_image_sizes', '__return_empty_array', 999 );
+            remove_filter( 'big_image_size_threshold', '__return_false', 999 );
+            remove_filter( 'wp_image_maybe_exif_rotate', '__return_false', 999 );
+
+            return $attachment_id;
+        }
+
+        /**
+         * Absolute path of the folder with the files uploaded with a form.
+         *
+         * @since    5.2.0
+         *
+         * @param    int                $form_id    Contact form ID
+         * @return   string
+         */
+        public static function get_upload_dir( $form_id ) {
+            return wp_get_upload_dir()['basedir'] . '/' . CFTZ_UPLOAD_DIR . '/' . absint( $form_id );
+        }
+
+        /**
+         * IDs of the media library attachments created from a form's uploads.
+         *
+         * @since    5.2.0
+         *
+         * @param    int                $form_id    Contact form ID
+         * @param    int                $before     Optional. Only attachments created before this timestamp. Since 5.3.0.
+         * @return   array
+         */
+        public static function get_upload_attachments( $form_id, $before = 0 ) {
+            $args = array(
+                'post_type'   => 'attachment',
+                'post_status' => array( 'inherit', 'private', 'trash' ),
+                'numberposts' => -1,
+                'fields'      => 'ids',
+                'meta_key'    => '_ctz_contact_form_id',
+                'meta_value'  => absint( $form_id ),
+            );
+
+            if ( ! empty( $before ) ) {
+                $args['date_query'] = array(
+                    array(
+                        'column' => 'post_date_gmt',
+                        'before' => gmdate( 'Y-m-d H:i:s', $before ),
+                    ),
+                );
+            }
+
+            return get_posts( $args );
+        }
+
+        /**
+         * Delete files uploaded with a form: its media library attachments and its submission
+         * folders, with everything inside.
+         *
+         * @since    5.3.0
+         *
+         * @param    int                $form_id    Contact form ID
+         * @param    int                $before     Optional. Only submissions before this timestamp. Default deletes all.
+         * @return   void
+         */
+        public static function delete_uploads( $form_id, $before = 0 ) {
+            $dir = self::get_upload_dir( $form_id );
+
+            // Everything: the form folder.
+            $expired = array( $dir );
+
+            // Before a date: the submission folders. Listed before deleting the attachments,
+            // which changes the modification time of older folders.
+            if ( ! empty( $before ) ) {
+                $expired = array();
+
+                if ( is_dir( $dir ) ) {
+                    foreach ( new DirectoryIterator( $dir ) as $item ) {
+                        if ( $item->isDot() || $item->isLink() || ! $item->isDir() ) {
+                            continue;
+                        }
+
+                        if ( self::get_submission_time( $item->getPathname() ) < $before ) {
+                            $expired[] = $item->getPathname();
+                        }
+                    }
+                }
+            }
+
+            foreach ( self::get_upload_attachments( $form_id, $before ) as $attachment_id ) {
+                wp_delete_attachment( $attachment_id, true );
+            }
+
+            foreach ( $expired as $expired_dir ) {
+                self::delete_upload_dir( $expired_dir );
+            }
+        }
+
+        /**
+         * When a submission folder was created.
+         *
+         * The folder name starts with the date (UTC), and this returns its midnight. Folders
+         * created before 5.3.0 have only the random part, so it returns their modification
+         * time, which does not change after the submission.
+         *
+         * @since    5.3.0
+         *
+         * @param    string             $dir        Absolute path of a submission folder
+         * @return   int                Timestamp, or PHP_INT_MAX when unknown, so the folder is kept
+         */
+        private static function get_submission_time( $dir ) {
+            if ( preg_match( '/^(\d{8})_/', basename( $dir ), $matches ) ) {
+                $date = DateTime::createFromFormat( '!Ymd', $matches[1], new DateTimeZone( 'UTC' ) );
+
+                if ( $date ) {
+                    return $date->getTimestamp();
+                }
+            }
+
+            $time = filemtime( $dir );
+
+            return ( false === $time ) ? PHP_INT_MAX : $time;
+        }
+
+        /**
+         * Files, total size and media library attachments uploaded with a form.
+         *
+         * @since    5.2.0
+         *
+         * @param    int                $form_id    Contact form ID
+         * @return   array              { files, size, attachments }
+         */
+        public static function get_uploads_summary( $form_id ) {
+            $files = 0;
+            $size  = 0;
+            $dir   = self::get_upload_dir( $form_id );
+
+            if ( is_dir( $dir ) ) {
+                $iterator = new RecursiveIteratorIterator( new RecursiveDirectoryIterator( $dir, FilesystemIterator::SKIP_DOTS ) );
+
+                foreach ( $iterator as $file ) {
+                    // The index.php files only protect the folders.
+                    if ( ! $file->isFile() || 'index.php' === $file->getFilename() ) {
+                        continue;
+                    }
+
+                    $files++;
+                    $size += $file->getSize();
+                }
+            }
+
+            return array(
+                'files'       => $files,
+                'size'        => $size,
+                'attachments' => count( self::get_upload_attachments( $form_id ) ),
+            );
+        }
+
+        /**
+         * Text for the webhook panel with the summary of a form's uploads.
+         *
+         * @since    5.2.0
+         *
+         * @param    int                $form_id    Contact form ID
+         * @return   string
+         */
+        public static function get_uploads_summary_text( $form_id ) {
+            $summary = self::get_uploads_summary( $form_id );
+
+            if ( empty( $summary['files'] ) && empty( $summary['attachments'] ) ) {
+                return __( 'No files uploaded with this form.', 'cf7-to-zapier' );
+            }
+
+            return sprintf(
+                /* translators: 1: number of files, 2: total size, 3: number of media library items */
+                __( '%1$s (%2$s), %3$s in the media library.', 'cf7-to-zapier' ),
+                sprintf( _n( '%s file', '%s files', $summary['files'], 'cf7-to-zapier' ), number_format_i18n( $summary['files'] ) ),
+                size_format( $summary['size'] ),
+                number_format_i18n( $summary['attachments'] )
+            );
+        }
+
+        /**
+         * Delete an upload folder (of a form or a submission) with everything inside.
+         *
+         * The real path must be inside the plugin upload folder, so a wrong path or a link
+         * cannot delete anything else.
+         *
+         * @since    5.2.0
+         *
+         * @param    string             $dir        Absolute path of the folder
+         * @return   void
+         */
+        private static function delete_upload_dir( $dir ) {
+            $base = realpath( wp_get_upload_dir()['basedir'] . '/' . CFTZ_UPLOAD_DIR );
+            $dir  = realpath( $dir );
+
+            if ( empty( $base ) || empty( $dir ) || 0 !== strpos( $dir, $base . DIRECTORY_SEPARATOR ) ) {
+                return;
+            }
+
+            $iterator = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator( $dir, FilesystemIterator::SKIP_DOTS ),
+                RecursiveIteratorIterator::CHILD_FIRST
+            );
+
+            foreach ( $iterator as $item ) {
+                if ( $item->isDir() && ! $item->isLink() ) {
+                    rmdir( $item->getPathname() );
+                    continue;
+                }
+
+                wp_delete_file( $item->getPathname() );
+            }
+
+            rmdir( $dir );
+        }
+
+        /**
+         * Add an empty index.php to upload folders.
+         *
+         * A server with directory listing on would show every submission from the base
+         * and form folders, and every file of a submission from its own folder.
+         *
+         * @since    5.2.0
+         *
+         * @param    array              $dirs       Absolute folder paths
+         * @return   void
+         */
+        private function protect_upload_dirs( $dirs ) {
+            foreach ( $dirs as $dir ) {
+                $index = $dir . '/index.php';
+
+                if ( is_dir( $dir ) && ! file_exists( $index ) ) {
+                    file_put_contents( $index, "<?php\n// Silence is golden.\n" );
+                }
+            }
+        }
+
+        /**
+         * Replace invalid UTF-8 sequences in a value (or array of values).
+         *
+         * Contact Form 7 does it to its posted data, but we read $_POST directly
+         * and json_encode() fails on invalid UTF-8. See issue #23.
+         *
+         * @since    5.1.1
+         *
+         * @param    mixed              $value
+         * @return   mixed              $value
+         */
+        private function scrub_utf8( $value ) {
+            if ( is_array( $value ) ) {
+                foreach ( $value as $key => $v ) {
+                    $value[ $key ] = $this->scrub_utf8( $v );
+                }
+
+                return $value;
+            }
+
+            if ( ! is_string( $value ) ) {
+                return $value;
+            }
+
+            // Replaces each invalid sequence with U+FFFD. Since WordPress 6.9.
+            if ( function_exists( 'wp_scrub_utf8' ) ) {
+                return wp_scrub_utf8( $value );
+            }
+
+            // Replaces each invalid sequence with "?".
+            if ( function_exists( 'mb_convert_encoding' ) ) {
+                return mb_convert_encoding( $value, 'UTF-8', 'UTF-8' );
+            }
+
+            // Last resort: empties the value if it is not valid UTF-8.
+            return wp_check_invalid_utf8( $value );
+        }
+
+        /**
          * Special Mail Tags from a configuration string
          *
          * @since    1.3.1
@@ -824,6 +1268,16 @@ It may contain sensitive data.
                     'key'     => 'files_send_content',
                     'default' => '0',
                     'type'    => 'checkbox',
+                ],
+                [
+                    'key'     => 'add_to_library',
+                    'default' => '0',
+                    'type'    => 'checkbox',
+                ],
+                [
+                    'key'     => 'delete_files_after',
+                    'default' => '0',
+                    'type'    => 'number',
                 ],
                 [
                     'key'     => 'special_mail_tags',

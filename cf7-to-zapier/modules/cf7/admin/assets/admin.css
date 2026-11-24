@@ -14,6 +14,10 @@
   margin-bottom: 1rem !important;
 }
 
+#webhook-panel .ctz-pb3 {
+  padding-bottom: 1rem !important;
+}
+
 #webhook-panel .ctz-color-red {
   color: #AA0000;
 }
@@ -82,6 +86,39 @@
   width: 100% !important;
 }
 
+/* A notice row in a form table, right above the setting it is about. Aligned with the row labels. */
+#webhook-panel .form-table .ctz-row-notice td {
+  padding: 20px 10px 0 0;
+}
+
+/* Destructive action, like the block editor's "Move to trash" (components-button is-secondary is-destructive). */
+#webhook-panel .button.ctz-button-destructive:not(:disabled) {
+  color: #cc1818;
+  border-color: #cc1818;
+  background: transparent;
+}
+
+#webhook-panel .button.ctz-button-destructive:not(:disabled):hover {
+  color: #9e1313;
+  border-color: #9e1313;
+  background: rgba(204, 24, 24, 0.04);
+}
+
+#webhook-panel .button.ctz-button-destructive:not(:disabled):active {
+  background: rgba(204, 24, 24, 0.08);
+}
+
+#webhook-panel .button.ctz-button-destructive:not(:disabled):focus {
+  border-color: #cc1818;
+  box-shadow: 0 0 0 1px #cc1818;
+}
+
+/* The original select hidden by select2: WordPress 7 gives selects a min-height that keeps it 40px tall. */
+#webhook-panel .select2-hidden-accessible {
+  min-height: 0 !important;
+  width: 0 !important;
+}
+
 #webhook-panel .ctz-accordion-wrapper {
   margin: 0 -16px;
 }
@@ -129,35 +166,6 @@
   margin: 0 0 1rem;
 }
 
-#webhook-panel .faq-list {
-  margin: 0;
-}
-
-#webhook-panel .faq-list li {
-  margin: 0 0 0.5rem;
-}
-
-#webhook-panel .faq-list li a {
-  color: #FF4A00;
-  box-shadow: none;
-}
-
-#webhook-panel .faq-list li a:hover {
-  color: #E54300;
-}
-
-#webhook-panel .faq-list li.new-topic {
-  margin-top: 1rem;
-}
-
-#webhook-panel .faq-list li.new-topic a {
-  color: #2271b1;
-}
-
-#webhook-panel .faq-list li.new-topic a:hover {
-  color: #135e96;
-}
-
 #ctz-webhook-confirmation {
   display: none;
   position: fixed;
@@ -177,7 +185,7 @@
 #ctz-webhook-confirmation .ctz-webhook-confirmation-message {
   margin: 0 0 3rem;
   color: #FF4A00;
-  font-size: 2rem;
+  font-size: 1.7rem;
   line-height: 1.4;
   font-weight: 300;
 }

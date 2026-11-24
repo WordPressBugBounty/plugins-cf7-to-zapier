@@ -93,15 +93,14 @@ jQuery(document).ready(function($) {
     Confirm(
       ( has_headers ? CTZ_ADMIN.messages.confirm_all : CTZ_ADMIN.messages.confirm_body ),
       function() {
-        console.log('triggered');
-
         $('#ctz-webhook-special_mail_tags').html('').trigger('change');
         $('#ctz-webhook-custom_headers').html( has_headers ? template.headers.join('\n') : '' ).trigger('change');
 
-        const fields = (CTZ_ADMIN_TAGS || []).map((tag) => `[${tag}]`).join(template.separator || ' | ');
+        const fields = (window.CTZ_ADMIN_TAGS || []).map((tag) => `[${tag}]`).join(template.separator || ' | ');
         $('#ctz-webhook-custom_body').html(template.body.replace('__VALUES__', fields)).trigger('change');
 
-        if (! (template?.docs || false)) {
+        // The link comes from the remote templates file: open only web addresses.
+        if (! /^https?:\/\//i.test(template?.docs || '')) {
           return;
         }
 
@@ -111,6 +110,35 @@ jQuery(document).ready(function($) {
         select.val(null).trigger('change');
       }
     );
+  });
+
+  // Delete uploaded files
+  $('#ctz-webhook-delete-uploads').on('click', function(event) {
+    event.preventDefault();
+
+    const button = $(this);
+    const summary = $('#ctz-webhook-uploads-summary');
+
+    Confirm(CTZ_ADMIN.messages.confirm_delete_uploads, function() {
+      button.prop('disabled', true);
+
+      $.post(ajaxurl, {
+        action: 'ctz_delete_uploads',
+        form_id: button.data('form-id'),
+        nonce: button.data('nonce'),
+      }).done(function(response) {
+        if (! response.success) {
+          summary.text(CTZ_ADMIN.messages.delete_uploads_error);
+          return;
+        }
+
+        summary.text(response.data.summary);
+      }).fail(function() {
+        summary.text(CTZ_ADMIN.messages.delete_uploads_error);
+      }).always(function() {
+        button.prop('disabled', false);
+      });
+    });
   });
 
   // Accordion

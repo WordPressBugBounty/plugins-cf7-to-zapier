@@ -3,9 +3,9 @@
 Contributors: mariovalney
 Donate link: https://www.paypal.com/donate?campaign_id=9AA82JCSNWNFS
 Tags: cf7, contact form, zapier, integration, webhook
-Requires at least: 4.7
-Tested up to: 6.9.1
-Stable tag: 5.1.0
+Requires at least: 5.0
+Tested up to: 7.1.5
+Stable tag: 5.3.0
 Requires PHP: 7.4
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
@@ -48,12 +48,12 @@ We would be grateful for a [review here](https://wordpress.org/support/plugin/cf
 
 = Support =
 
-* Contact Form 7 - 6.1.5
+* Contact Form 7 - 6.2.6
 
 Tested with other plugins:
 
 * MultiLine files for Contact Form 7 - 2.9.1
-* Contact Form 7 Multi-Step Forms - 4.6
+* Contact Form 7 Multi-Step Forms - 4.8.1
 
 == Installation ==
 
@@ -69,94 +69,49 @@ Then
 
 * Activate the plugin through the 'Plugins' menu in WordPress.
 
-You will find 'Zapier' tab into form configuration.
+You will find the 'Webhook' tab in the form editor.
 
 == Frequently Asked Questions ==
 
-= Did you renamed the plugin? =
+= Did you rename the plugin? =
 
-Yes. Due to [this](https://make.wordpress.org/plugins/2019/08/08/trademark-enforcement/).
+Yes. It was called CF7 to Zapier and changed its name because of the [trademark rules of WordPress.org](https://make.wordpress.org/plugins/2019/08/08/trademark-enforcement/).
 
-= Does it works with Gutenberg? =
+= Does it work with the block editor (Gutenberg)? =
 
-Yes. We support WordPress 5+ and CF7 too.
+Yes. It works with WordPress 5.0 or later and with the current versions of Contact Form 7.
 
-= Does it works for forms sent out of CF7? =
+= Does it work with forms not made with Contact Form 7? =
 
-Nope. The intention here is to integrate CF7 to Zapier (and another webhooks).
+No. It only sends Contact Form 7 forms.
 
 = Can I use it without Zapier? =
 
-Yep. We are creating a integration to Zapier webhook, but you can insert any URL to receive a JSON formated data.
+Yes. Zapier is one option, but any URL that receives data works. By default, the plugin sends JSON.
 
-= My sent data is empty =
+= How can I send one form to multiple webhooks? =
 
-Please, go to [support forum](https://wordpress.org/support/plugin/cf7-to-zapier/) to get help.
+Add one URL per line in "Webhook URL". If one of them fails, the next ones are not sent; see [Make multiple webhooks optionals](https://cf7-to-webhook.valney.dev/docs/how-to/make-multiple-webhooks-optionals).
 
-= How can I submit one form to multiple webhooks? =
+= How can I send uploaded files? =
 
-Just add one webhook per line in "Webhook URL" settings.
+The plugin copies each file before Contact Form 7 deletes it and sends its link, or sends the file content. You can also keep the files in the media library and delete them after a number of days. See [Send files](https://cf7-to-webhook.valney.dev/docs/how-to/send-files).
 
-Please, read [this topic](https://github.com/mariovalney/cf7-to-zapier/wiki/Make-multiple-webhooks-optionals) for more information.
+= My data arrives empty or does not arrive. =
 
-= How can I show webhook errors on form submit? =
-
-We already show WordPress request errors. If you want to add theatment to webhook errors, please [check this post](https://wordpress.org/support/topic/form-sent-to-zapier-randomly/#post-11249864).
-
-= How can I upload files and send link to webhook? =
-
-If you send a form with file, we will copy this to a directory before CF7 remove it and send the link to Zapier.
-
-= How can I rename a field to webhook? =
-
-You can add a "webhook" option to your field on form edit tab.
-
-It's like the "class" option: `[text your-field class:form-control id:field-id webhook:webhook-key]`.
-
-This will create a text field with name "your-field", class "form-control", id "field-id" and will be sent to webhook with key "webhook-key".
-
-= How I can get the free text value? =
-
-We will replace the value for last option (which is the free_text input) with the value.
-
-This way your webhook will receive the free text value and other options if you allow it (like in checkbox).
-
-= Can I send webhooks to an internal/private IP address? =
-
-By default, the plugin blocks requests to private, loopback, and link-local addresses (e.g. `192.168.x.x`, `10.x.x.x`, `127.0.0.1`, `169.254.x.x`) to prevent SSRF attacks.
-
-If you run a trusted internal service and need to reach it, you can whitelist specific hosts using WordPress's `http_request_host_is_external` filter in your theme's `functions.php` or a custom plugin:
-
-`add_filter( 'http_request_host_is_external', function( $external, $host ) {
-    $trusted = [ '192.168.1.100', '10.0.0.50' ];
-    return in_array( $host, $trusted, true ) ? true : $external;
-}, 10, 2 );`
-
-Replace the IPs in `$trusted` with the hosts you want to allow. Only use this on servers you fully control and trust.
-
-= I don't see a template for my webhook. =
-
-Templates are created by community so we're constructing this together.
-
-You still are able to add a custom header / body or you can open a ticket and propose a new template.
-
-= Support for: Contact Form 7 Multi-Step Forms =
-
-We have native support for [Contact Form 7 Multi-Step Forms](https://wordpress.org/plugins/contact-form-7-multi-step-module/).
-
-You just have to add your webhook settings to last step and we'll get all data from all steps.
-
-We use "cf7msm_posted_data" stored by plugin so **no need for hidden inputs** (but we are not able to guarantee the data).
+See [Troubleshoot missing data](https://cf7-to-webhook.valney.dev/docs/how-to/troubleshoot). If that does not help, ask in the [support forum](https://wordpress.org/support/plugin/cf7-to-zapier/).
 
 = Who is the developer? =
 
-[Mário Valney](https://mariovalney.com/me)
+[Mário Valney](https://mariovalney.com/me), a Brazilian developer who is part of the [WordPress community](https://profiles.wordpress.org/mariovalney).
 
-Brazilian developer who is part of [WordPress community](https://profiles.wordpress.org/mariovalney).
+= How can I help? =
 
-= Can I help you? =
+Visit the [GitHub repository](https://github.com/mariovalney/cf7-to-zapier) or [make a donation](https://www.paypal.com/donate?campaign_id=9AA82JCSNWNFS).
 
-Yes! Visit [GitHub repository](https://github.com/mariovalney/cf7-to-zapier) or [make a donation](https://www.paypal.com/donate?campaign_id=9AA82JCSNWNFS).
+= More questions? =
+
+See the [FAQ](https://cf7-to-webhook.valney.dev/faq) and the [documentation](https://cf7-to-webhook.valney.dev/docs) on the plugin website.
 
 == Screenshots ==
 
@@ -165,6 +120,35 @@ Yes! Visit [GitHub repository](https://github.com/mariovalney/cf7-to-zapier) or 
 3. All request methods
 
 == Changelog ==
+
+= 5.3.0 =
+
+New feature: Delete uploaded files after a number of days (props to @Zodiac1978 for the suggestion).
+
+* New "Delete after" option, in "Media" under Advanced settings: once a day, deletes the files of the form older than that number of days, including their media library attachments. Only administrators can change it.
+* Upload folders now start with the submission date (UTC).
+
+= 5.2.0 =
+
+New feature: Add uploaded files to the media library (props to @Zodiac1978 for the suggestion).
+
+* New "Add to Library" option, in "Media" under Advanced settings: each uploaded file becomes a private attachment, even when sending file content.
+* New "Delete all files" button to delete every file uploaded with a form, including its media library attachments. Only administrators can use it.
+* Upload folders now get an empty index.php, so servers with directory listing on do not list submissions.
+* Fixed templates not filling the body with the form fields since 5.1.0.
+* Fixed the template selector staying empty on sites with WP_DEBUG on.
+* Fixed the form editor asking to confirm leaving the page without changes.
+* Fixed header injection through form fields in custom headers (props to @kta1kri for the responsible disclosure).
+* Documentation moved to [cf7-to-webhook.valney.dev/docs](https://cf7-to-webhook.valney.dev/docs), with new guides and a FAQ. The Help section of the webhook panel now points there.
+* Requires WordPress 5.0 or later.
+* Reviewed the plugin with the [WordPress agent skills](https://github.com/WordPress/agent-skills) and made some improvements.
+* Debug helpers now need CFTZ_ADD_DEBUG_FUNCTIONS.
+
+= 5.1.1 =
+
+* Fixed webhooks not being sent when the submitted data has invalid UTF-8. Invalid sequences are now replaced, as Contact Form 7 does (props to @Zodiac1978 for a suggestion).
+* Fixed fields with invalid UTF-8 being sent empty when using a custom body.
+* Fixed a PHP warning ("Undefined variable $data") in error notifications.
 
 = 5.1.0 =
 
@@ -347,6 +331,18 @@ Props to @shoreline-chrism
 * Ignore or not CF7 mail sent.
 
 == Upgrade Notice ==
+
+= 5.3.0 =
+
+Adds an option to delete uploaded files after a number of days.
+
+= 5.2.0 =
+
+Adds uploaded files to the media library and a button to delete them. Fixes templates not filling the body since 5.1.0.
+
+= 5.1.1 =
+
+Fixes webhooks not being sent when a submission contains invalid UTF-8.
 
 = 5.1.0 =
 
